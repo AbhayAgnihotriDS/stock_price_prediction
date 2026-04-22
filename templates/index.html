@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+    <title>AI Trading Dashboard</title>
+
+
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+
+<style>
+    body {
+        margin: 0;
+        background: #0e1117;
+        color: white;
+        font-family: Arial;
+    }
+
+    .container {
+        display: flex;
+        height: 100vh;
+    }
+
+    .sidebar {
+        width: 220px;
+        background: #161b22;
+        padding: 15px;
+    }
+
+    .stock-btn {
+        width: 100%;
+        margin: 5px 0;
+        padding: 10px;
+        background: #1f6feb;
+        border: none;
+        color: white;
+        cursor: pointer;
+        border-radius: 6px;
+    }
+
+    .main {
+        flex: 1;
+        padding: 10px;
+    }
+
+    #chart { height: 70%; }
+    #macd { height: 30%; }
+
+    .topbar {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+
+    input {
+        padding: 8px;
+        border-radius: 5px;
+        border: none;
+    }
+
+    button {
+        padding: 8px 12px;
+        background: #238636;
+        border: none;
+        color: white;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+</style>
+
+
+</head>
+
+<body>
+
+<div class="container">
+
+```
+<div class="sidebar">
+    <h3>Watchlist</h3>
+    <button class="stock-btn" onclick="loadStock('AAPL')">AAPL</button>
+    <button class="stock-btn" onclick="loadStock('TSLA')">TSLA</button>
+    <button class="stock-btn" onclick="loadStock('MSFT')">MSFT</button>
+</div>
+
+<div class="main">
+    <div class="topbar">
+        <input id="ticker" placeholder="Enter ticker">
+        <button onclick="manualLoad()">Load</button>
+    </div>
+
+    <div id="chart"></div>
+    <div id="macd"></div>
+</div>
+```
+
+</div>
+
+
+
+<script>
+window.onload = function () {
+
+    // ============================
+    // SAFE ELEMENTS
+    // ============================
+    const chartContainer = document.getElementById('chart');
+    const macdContainer = document.getElementById('macd');
+
+    // ============================
+    // CHART SETUP
+    // ============================
+    const chart = LightweightCharts.createChart(chartContainer, {
+        layout: { background: { color: '#0e1117' }, textColor: 'white' },
+        width: chartContainer.clientWidth || 800,
+        height: 400
+    });
+
+    const macdChart = LightweightCharts.createChart(macdContainer, {
+        layout: { background: { color: '#0e1117' }, textColor: 'white' },
+        width: macdContainer.clientWidth || 800,
+        height: 200
+    });
+
+    // ============================
+    // SERIES (v4 CORRECT)
+    // ============================
+    const candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries);
+
+    const ema20Series = chart.addSeries(LightweightCharts.LineSeries, { color: 'orange' });
+    const ema50Series = chart.addSeries(LightweightCharts.LineSeries, { color: 'blue' });
+    const predictionSeries = chart.addSeries(LightweightCharts.LineSeries, {
+        color: 'yellow',
+        lineWidth: 2
+    });
+
+    const macdSeries = macdChart.addSeries(LightweightCharts.LineSeries, { color: 'cyan' });
+    const signalSeries = macdChart.addSeries(LightweightCharts.LineSeries, { color: 'red' });
+
+    // ============================
+    // GLOBAL FUNCTIONS (FIXED)
+    // ============================
+    window.loadStock = function (ticker) {
+        document.getElementById("ticker").value = ticker;
+        fetchData(ticker);
+    };
+
+    window.manualLoad = function () {
+        let ticker = document.getElementById("ticker").value;
+        fetchData(ticker);
+    };
+
+    // ============================
+    // SAFE HELPER
+    // ============================
+    const safe = (v) => (v == null || isNaN(v)) ? 0 : v;
+
+    // ============================
+    // FETCH DATA
+    // ============================
+    async function fetchData(ticker) {
+        try {
+            console.log("Fetching:", ticker);
+
+            const BASE_URL = window.location.origin;
+
+            const res = await fetch(`${BASE_URL}/indicators?ticker=${ticker}`);
+
+            if (!res.ok) {
+                throw new Error("HTTP ERROR: " + res.status);
+            }
+
+            const data = await res.json();
+            console.log("DATA:", data);
+
+            if (data.error) {
+                alert("Backend Error: " + data.error);
+                return;
+            }
+
+            if (!data.candles || data.candles.length === 0) {
+                alert("No data ❌");
+                return;
+            }
+
+            // ============================
+            // FIX TIME FORMAT
+            // ============================
+            const candles = data.candles.map(c => ({
+                time: c.time.includes("T") ? c.time.split("T")[0] : c.time,
+                open: c.open,
+                high: c.high,
+                low: c.low,
+                close: c.close
+            }));
+
+            const ema20 = data.ema20 || [];
+            const ema50 = data.ema50 || [];
+            const macd = data.macd || [];
+            const macd_signal = data.macd_signal || [];
+            const trade = data.trade || [];
+
+            // ============================
+            // SET DATA
+            // ============================
+            candleSeries.setData(candles);
+
+            ema20Series.setData(candles.map((c, i) => ({
+                time: c.time,
+                value: safe(ema20[i])
+            })));
+
+            ema50Series.setData(candles.map((c, i) => ({
+                time: c.time,
+                value: safe(ema50[i])
+            })));
+
+            macdSeries.setData(candles.map((c, i) => ({
+                time: c.time,
+                value: safe(macd[i])
+            })));
+
+            signalSeries.setData(candles.map((c, i) => ({
+                time: c.time,
+                value: safe(macd_signal[i])
+            })));
+
+            // ============================
+            // MARKERS (SAFE)
+            // ============================
+            const markers = trade.map((t, i) => {
+                if (!candles[i]) return null;
+
+                if (t === "BUY") {
+                    return {
+                        time: candles[i].time,
+                        position: 'belowBar',
+                        color: 'green',
+                        shape: 'arrowUp',
+                        text: 'BUY'
+                    };
+                }
+
+                if (t === "SELL") {
+                    return {
+                        time: candles[i].time,
+                        position: 'aboveBar',
+                        color: 'red',
+                        shape: 'arrowDown',
+                        text: 'SELL'
+                    };
+                }
+
+                return null;
+            }).filter(Boolean);
+
+            LightweightCharts.createSeriesMarkers(candleSeries , markers);
+
+            // ============================
+            // PREDICTION (SAFE)
+            // ============================
+            try {
+                const pres = await fetch(`${BASE_URL}/predict?ticker=${ticker}`);
+                const pdata = await pres.json();
+
+                if (!pdata.error && pdata.prediction) {
+                    let last = candles[candles.length - 1];
+
+                    predictionSeries.setData([
+                        { time: last.time, value: last.close },
+                        {
+                            time: pdata.next_date.includes("T")
+                                ? pdata.next_date.split("T")[0]
+                                : pdata.next_date,
+                            value: safe(pdata.prediction)
+                        }
+                    ]);
+                }
+            } catch (e) {
+                console.log("Prediction skipped");
+            }
+
+            console.log("✅ SUCCESS");
+
+        } catch (err) {
+            console.error("REAL ERROR:", err);
+            alert("Frontend fetch error ❌");
+        }
+    }
+
+    // ============================
+    // AUTO LOAD DEFAULT STOCK
+    // ============================
+    loadStock("AAPL");
+
+};
+</script>
+
+</body>
+</html>
+
+
+
+
+
