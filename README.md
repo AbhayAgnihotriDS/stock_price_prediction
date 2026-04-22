@@ -36,7 +36,7 @@ An advanced stock market analysis and prediction system that combines deep learn
 - **Frontend:** HTML, CSS, JavaScript
 - **Charting:** Lightweight Charts
 - **Backend:** Flask (Python)
-- **Machine Learning:** TensorFlow / Keras (LSTM)
+- **Machine Learning:** pytorch (LSTM)
 - **Data Processing:** Pandas, NumPy, Scikit-learn
 
 ---
